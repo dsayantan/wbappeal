@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voters — WB SIR Appeals</title>
+<style>
+:root{--bg:#fff;--fg:#1b1f24;--mut:#667;--line:#dde1e6;--card:#f5f7fa;--bar:#2f6fed}
+@media(prefers-color-scheme:dark){:root{--bg:#14171c;--fg:#e6e8eb;--mut:#9aa3ad;--line:#2b313a;--card:#1c2128;--bar:#6b9bff}}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}main{max-width:1250px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:4px 0}.mut{color:var(--mut)}a{color:var(--bar)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}select,input,button{font:inherit;padding:5px 9px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:6px}
+table{border-collapse:collapse;width:100%}th,td{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{background:var(--card);position:sticky;top:0}.w{overflow-x:auto}
+</style></head><body><main>
+<a href="index.html">← Back to summary</a>
+<h1 id="h">Loading…</h1><div class="mut" id="sub"></div>
+<div class="bar"><input id="q" placeholder="Search name / EPIC / appeal id"><select id="cat"><option value="">Deleted + Included</option><option value="D">Deleted voters</option><option value="I">Included (appeal against inclusion)</option></select>
+<select id="bo"><option value="">All booths</option></select><select id="st"><option value="">Any appeal status</option></select><select id="dc"><option value="">Any Tribunal status</option></select>
+<button id="csv">Download filtered CSV</button></div>
+<div class="mut" id="cnt"></div><div class="w"><table id="tb"></table></div>
+<div class="bar"><button id="pv">← Prev</button><span id="pg" class="mut"></span><button id="nx">Next →</button></div>
+</main>
+<script>
+const ac=new URLSearchParams(location.search).get('ac')||'';
+const ST={C:'Appealed (online)',O:'Appealed (offline)',A:'Appealed (channel unknown)',N:'Not appealed',U:'Status missing','':''};
+const DC={P:'Pending',Y:'Approved',R:'Rejected',D:'Disposed (outcome unknown)',X:'N/A (no appeal)','':'—'};
+const IC={P:'Pending',D:'Disposed (outcome unknown)'};
+let rows=[],view=[],page=0;const PS=200;
+const $=id=>document.getElementById(id);
+function load(){const s=document.createElement('script');s.src='data/ac/'+ac+'.js';s.onload=go;s.onerror=()=>{$('h').textContent='No data for assembly '+ac};document.head.appendChild(s)}
+async function go(){
+ const b=Uint8Array.from(atob(window.VD[ac]),c=>c.charCodeAt(0));
+ const t=await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+ rows=t.split('\n').map(l=>l.split('\t'));
+ const n=ac,A=(window.META||{})[n];
+ $('h').textContent='Assembly '+ac+(A?' '+A.name+' — '+A.district:'');
+ const pn=x=>parseInt(x)||1e9;
+ [...new Set(rows.map(r=>r[1]))].sort((a,b)=>pn(a)-pn(b)||a.localeCompare(b)).forEach(x=>$('bo').add(new Option('Booth '+x,x)));
+ Object.entries(ST).filter(e=>e[0]).forEach(([k,v])=>$('st').add(new Option(v,k)));
+ Object.entries(DC).filter(e=>e[0]&&e[0]!='X').forEach(([k,v])=>$('dc').add(new Option(v,k)));
+ rows.sort((a,b)=>pn(a[1])-pn(b[1])||(a[0]<b[0]?-1:1));
+ ['q','cat','bo','st','dc'].forEach(i=>$(i).oninput=()=>{page=0;filt()});filt()}
+function filt(){const q=$('q').value.trim().toLowerCase(),c=$('cat').value,b=$('bo').value,s=$('st').value,d=$('dc').value;
+ view=rows.filter(r=>(!c||r[0]==c)&&(!b||r[1]==b)&&(!s||r[4]==s)&&(!d||r[6]==d)&&(!q||r[2].toLowerCase().includes(q)||r[3].toLowerCase().includes(q)||r[5].toLowerCase().includes(q)));draw()}
+function draw(){const mx=Math.max(0,Math.ceil(view.length/PS)-1);page=Math.min(page,mx);
+ $('cnt').textContent=view.length.toLocaleString('en-IN')+' of '+rows.length.toLocaleString('en-IN')+' voters';$('pg').textContent='Page '+(page+1)+' / '+(mx+1);
+ const e=s=>s.replace(/[&<]/g,m=>m=='&'?'&amp;':'&lt;');
+ $('tb').innerHTML='<tr><th>Sl</th><th>Booth</th><th>EPIC</th><th>Name</th><th>Category</th><th>Appeal Status</th><th>Appeal Id</th><th>Tribunal Status</th></tr>'+
+ view.slice(page*PS,page*PS+PS).map((r,i)=>`<tr><td>${page*PS+i+1}</td><td>${e(r[1])}</td><td>${e(r[2])}</td><td>${e(r[3])}</td><td>${r[0]=='D'?'Deleted':'Included'}</td><td>${r[0]=='I'?'Appealed against inclusion':ST[r[4]]||r[4]}</td><td>${e(r[5])}</td><td>${r[0]=='I'?IC[r[6]]:DC[r[6]]}</td></tr>`).join('')}
+$('pv').onclick=()=>{page=Math.max(0,page-1);draw()};$('nx').onclick=()=>{page++;draw()};
+$('csv').onclick=()=>{const q=v=>'"'+String(v).replace(/"/g,'""')+'"';const out=['Sl,Booth,EPIC,Name,Category,Appeal Status,Appeal Id,Tribunal Status'].concat(view.map((r,i)=>[i+1,r[1],r[2],r[3],r[0]=='D'?'Deleted':'Included',r[0]=='I'?'Appealed against inclusion':ST[r[4]]||r[4],r[5],r[0]=='I'?IC[r[6]]:DC[r[6]]].map(q).join(',')));
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+out.join('\n')],{type:'text/csv'}));a.download='AC'+ac+'_voters.csv';a.click()};
+</script><script src="data/meta.js"></script><script>ac?load():($('h').textContent='No assembly selected')</script>
+</body></html>
